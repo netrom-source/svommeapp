@@ -1,0 +1,6 @@
+# Ignore binary Gradle wrapper
+gradle/wrapper/gradle-wrapper.jar
+# Ignore build outputs
+.gradle/
+build/
+app/build/
