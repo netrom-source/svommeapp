@@ -13,8 +13,7 @@ import kotlin.math.abs
  */
 class MotionDetector(
     private val roiPercent: RectF,
-    private val sensitivity: Float = 0.2f,
-    private val onMotion: () -> Unit
+    private val onResult: (Float) -> Unit
 ) : ImageAnalysis.Analyzer {
 
     private var lastFrame: ByteArray? = null
@@ -23,12 +22,15 @@ class MotionDetector(
         val buffer = image.planes[0].buffer
         val data = ByteArray(buffer.remaining())
         buffer.get(data)
+
         val roi = Rect(
             (roiPercent.left * image.width).toInt(),
             (roiPercent.top * image.height).toInt(),
             (roiPercent.right * image.width).toInt(),
             (roiPercent.bottom * image.height).toInt()
         )
+
+        var intensity = 0f
         if (lastFrame != null && lastFrame!!.size >= data.size) {
             var diffSum = 0
             var count = 0
@@ -41,15 +43,17 @@ class MotionDetector(
                     count++
                 }
             }
-            val avg = diffSum.toFloat() / count
-            if (avg / 255f > sensitivity) {
-                onMotion()
+            if (count > 0) {
+                intensity = diffSum.toFloat() / (count * 255f)
             }
         }
+
         if (lastFrame == null || lastFrame!!.size != data.size) {
             lastFrame = ByteArray(data.size)
         }
         System.arraycopy(data, 0, lastFrame!!, 0, data.size)
+
+        onResult(intensity)
         image.close()
     }
 }

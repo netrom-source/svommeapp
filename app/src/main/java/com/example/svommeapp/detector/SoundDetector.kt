@@ -15,8 +15,7 @@ import kotlin.math.sqrt
  * exceeds a given threshold.
  */
 class SoundDetector(
-    private val thresholdDb: Int = 80,
-    private val onSound: () -> Unit
+    private val onLevel: (Double) -> Unit
 ) {
     private val sampleRate = 44100
     private val bufferSize = AudioRecord.getMinBufferSize(
@@ -43,11 +42,9 @@ class SoundDetector(
             while (true) {
                 val read = record?.read(buffer, 0, buffer.size) ?: break
                 if (read > 0) {
-                    val rms = sqrt(buffer.take(read).map { it * it }.average())
-                    val db = 20 * log10(rms / Short.MAX_VALUE)
-                    if (db > thresholdDb) {
-                        onSound()
-                    }
+                    val rms = sqrt(buffer.take(read).map { it.toDouble() * it.toDouble() }.average())
+                    val db = 20 * log10(rms.coerceAtLeast(1.0))
+                    onLevel(db)
                 }
             }
         }

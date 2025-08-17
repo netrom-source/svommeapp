@@ -64,6 +64,22 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode
 
+    // Debug and runtime state
+    private val _counting = MutableStateFlow(true)
+    val counting: StateFlow<Boolean> = _counting
+
+    private val _motionLevel = MutableStateFlow(0f)
+    val motionLevel: StateFlow<Float> = _motionLevel
+
+    private val _soundLevelDb = MutableStateFlow(0.0)
+    val soundLevelDb: StateFlow<Double> = _soundLevelDb
+
+    private val _debugLog = MutableStateFlow<List<String>>(emptyList())
+    val debugLog: StateFlow<List<String>> = _debugLog
+
+    private val _debugOverlay = MutableStateFlow(false)
+    val debugOverlay: StateFlow<Boolean> = _debugOverlay
+
     private var lastTriggerTime: Long = 0
 
     fun setCameraEnabled(enabled: Boolean) {
@@ -106,6 +122,16 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString("themeMode", mode.name).apply()
     }
 
+    fun setCounting(active: Boolean) {
+        _counting.value = active
+    }
+
+    fun toggleCounting() { _counting.value = !_counting.value }
+
+    fun setDebugOverlay(enabled: Boolean) {
+        _debugOverlay.value = enabled
+    }
+
     fun updateRoi(rect: RectF) {
         _roi.value = rect
         prefs.edit()
@@ -117,6 +143,7 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onTurnDetected(timestamp: Long = System.currentTimeMillis()) {
+        if (!_counting.value) return
         if (timestamp - lastTriggerTime < _minIntervalMs.value) return
         lastTriggerTime = timestamp
         viewModelScope.launch {
@@ -126,6 +153,25 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
             val times = (_lastLapTimes.value + timestamp).takeLast(3)
             _lastLapTimes.emit(times)
         }
+    }
+
+    fun reportMotion(level: Float) {
+        viewModelScope.launch {
+            _motionLevel.emit(level)
+            addLog("camera", level)
+        }
+    }
+
+    fun reportSound(db: Double) {
+        viewModelScope.launch {
+            _soundLevelDb.emit(db)
+            addLog("sound", db.toFloat())
+        }
+    }
+
+    private fun addLog(source: String, value: Float) {
+        val entry = "${System.currentTimeMillis()} $source ${"%.2f".format(value)}"
+        _debugLog.value = (_debugLog.value + entry).takeLast(50)
     }
 
     fun reset() {
