@@ -26,7 +26,7 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.List as ListIcon
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.History
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -208,7 +208,7 @@ class MainActivity : ComponentActivity() {
         Scaffold(topBar = {
             TopAppBar(title = { Text("Fars Svøm-o-meter") }, actions = {
                 IconButton(onClick = { showSessionIntervals = true }) {
-                    Icon(ListIcon, contentDescription = "Sessionens intervaller")
+                    Icon(Icons.Default.List, contentDescription = "Sessionens intervaller")
                 }
                 IconButton(onClick = { showHistory = true }) {
                     Icon(Icons.Default.History, contentDescription = "Historik")
