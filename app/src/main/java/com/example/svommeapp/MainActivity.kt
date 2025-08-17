@@ -231,40 +231,43 @@ class MainActivity : ComponentActivity() {
                 }
             })
         }, bottomBar = {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { vm.toggleCounting() },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(80.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = if (counting) Color.Red else Color(0xFF388E3C),
-                        contentColor = Color.White
-                    )
+            Column(Modifier.fillMaxWidth()) {
+                LastIntervalsPanel(lapTimes = lapTimes) { showSessionIntervals = true }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        if (counting) "Stop" else "Start",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Button(
-                    onClick = { showReset = true },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(80.dp),
-                    enabled = true
-                ) {
-                    Text(
-                        "Nulstil",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Button(
+                        onClick = { vm.toggleCounting() },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(80.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = if (counting) Color.Red else Color(0xFF388E3C),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text(
+                            if (counting) "Stop" else "Start",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Button(
+                        onClick = { showReset = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(80.dp),
+                        enabled = true
+                    ) {
+                        Text(
+                            "Nulstil",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }) { padding ->
@@ -367,38 +370,6 @@ class MainActivity : ComponentActivity() {
                     Text("Omgange", fontSize = if (previewMinimized) 40.sp else 20.sp)
                     Text("${distance} m", fontSize = if (previewMinimized) 96.sp else 48.sp, fontWeight = FontWeight.Bold)
                     Text("Afstand", fontSize = if (previewMinimized) 40.sp else 20.sp)
-                    Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                    val intervals = lapTimes.zipWithNext { a, b -> b - a }
-                    val last = intervals.takeLast(3).asReversed()
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        repeat(3) { idx ->
-                            val value = last.getOrNull(idx)
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showSessionIntervals = true },
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colors.primary)
-                            ) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = value?.let {
-                                            String.format(Locale.getDefault(), "%.1f s", it / 1000f)
-                                        } ?: "-",
-                                        fontSize = if (previewMinimized) 64.sp else 32.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -519,6 +490,35 @@ class MainActivity : ComponentActivity() {
     private fun stopSound() {
         soundDetector?.stop()
         soundDetector = null
+    }
+}
+
+@Composable
+private fun LastIntervalsPanel(lapTimes: List<Long>, onClick: () -> Unit) {
+    val intervals = lapTimes.zipWithNext { a, b -> b - a }
+    val last = intervals.takeLast(3).asReversed()
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        elevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold)
+            repeat(3) { idx ->
+                val value = last.getOrNull(idx)
+                Text(
+                    text = value?.let {
+                        String.format(Locale.getDefault(), "%.1f s", it / 1000f)
+                    } ?: "-",
+                    fontSize = 20.sp
+                )
+            }
+        }
     }
 }
 
