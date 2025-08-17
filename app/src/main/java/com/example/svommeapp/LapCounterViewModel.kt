@@ -11,6 +11,10 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.example.svommeapp.data.LapDatabase
+import com.example.svommeapp.data.LapEntity
+import com.example.svommeapp.data.SessionEntity
+import com.example.svommeapp.data.SessionWithLaps
 
 /**
  * ViewModel holding all lap counting logic and settings.
@@ -24,8 +28,8 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     private val _laps = MutableStateFlow(0)
     val laps: StateFlow<Int> = _laps
 
-    private val _lastLapTimes = MutableStateFlow<List<Long>>(emptyList())
-    val lastLapTimes: StateFlow<List<Long>> = _lastLapTimes
+    private val _lapTimestamps = MutableStateFlow<List<Long>>(emptyList())
+    val lapTimestamps: StateFlow<List<Long>> = _lapTimestamps
 
     private val _distanceMeters = MutableStateFlow(0)
     val distanceMeters: StateFlow<Int> = _distanceMeters
@@ -95,6 +99,18 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     val debugOverlay: StateFlow<Boolean> = _debugOverlay
 
     private var lastTriggerTime: Long = 0
+    private var currentSessionId: Long = 0
+    private val db = LapDatabase.get(app)
+    private val dao = db.lapDao()
+    private var sessionStartTime: Long = System.currentTimeMillis()
+
+    init {
+        viewModelScope.launch {
+            currentSessionId = dao.insertSession(SessionEntity(startedAt = sessionStartTime))
+        }
+    }
+
+    val history: kotlinx.coroutines.flow.Flow<List<SessionWithLaps>> = dao.getSessionsWithLaps()
 
     private val _previewMinimized = MutableStateFlow(prefs.getBoolean("previewMinimized", false))
     val previewMinimized: StateFlow<Boolean> = _previewMinimized
@@ -196,7 +212,7 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putBoolean("playSoundOnActivation", enabled).apply()
     }
 
-    fun onTurnDetected(timestamp: Long = System.currentTimeMillis()) {
+    fun onTurnDetected(source: String, timestamp: Long = System.currentTimeMillis()) {
         if (!_counting.value) return
         if (timestamp - lastTriggerTime < _minIntervalMs.value) return
         lastTriggerTime = timestamp
@@ -204,8 +220,17 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
             val newLaps = _laps.value + 1
             _laps.emit(newLaps)
             _distanceMeters.emit(newLaps * _laneLengthMeters.value / _turnsPerLap.value)
-            val times = (_lastLapTimes.value + timestamp).takeLast(4)
-            _lastLapTimes.emit(times)
+            val times = _lapTimestamps.value + timestamp
+            _lapTimestamps.emit(times)
+            val duration = if (times.size < 2) 0 else timestamp - times[times.size - 2]
+            dao.insertLap(
+                LapEntity(
+                    sessionId = currentSessionId,
+                    timestamp = timestamp,
+                    durationMs = duration,
+                    source = source
+                )
+            )
             playActivationSound()
         }
     }
@@ -251,9 +276,18 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
 
     fun reset() {
         viewModelScope.launch {
+            dao.updateSession(
+                SessionEntity(
+                    id = currentSessionId,
+                    startedAt = sessionStartTime,
+                    endedAt = System.currentTimeMillis()
+                )
+            )
+            sessionStartTime = System.currentTimeMillis()
+            currentSessionId = dao.insertSession(SessionEntity(startedAt = sessionStartTime))
             _laps.emit(0)
             _distanceMeters.emit(0)
-            _lastLapTimes.emit(emptyList())
+            _lapTimestamps.emit(emptyList())
             lastTriggerTime = 0
         }
     }
