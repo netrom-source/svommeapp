@@ -276,6 +276,15 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
         _debugLog.value = (_debugLog.value + entry).takeLast(50)
     }
 
+    fun clearLapHistory() {
+        viewModelScope.launch {
+            _laps.emit(0)
+            _distanceMeters.emit(0)
+            _lapTimestamps.emit(emptyList())
+            lastTriggerTime = 0
+        }
+    }
+
     fun reset() {
         viewModelScope.launch {
             dao.updateSession(
