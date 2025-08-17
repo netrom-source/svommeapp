@@ -206,11 +206,29 @@ class MainActivity : ComponentActivity() {
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = { vm.toggleCounting() }, modifier = Modifier.weight(1f)) {
-                    Text(if (counting) "Stop" else "Start")
+                Button(
+                    onClick = { vm.toggleCounting() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(80.dp)
+                ) {
+                    Text(
+                        if (counting) "Stop" else "Start",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                Button(onClick = { showReset = true }, modifier = Modifier.weight(1f)) {
-                    Text("Nulstil")
+                Button(
+                    onClick = { showReset = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(80.dp)
+                ) {
+                    Text(
+                        "Nulstil",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }) { padding ->
@@ -251,11 +269,15 @@ class MainActivity : ComponentActivity() {
                                 onClick = {
                                     vm.setCameraFacing(if (cameraFacing == CameraFacing.BACK) CameraFacing.FRONT else CameraFacing.BACK)
                                 },
-                                enabled = hasFront && hasBack
+                                enabled = hasFront && hasBack,
+                                modifier = Modifier.size(80.dp)
                             ) {
                                 Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
                             }
-                            IconButton(onClick = { vm.setPreviewMinimized(true) }) {
+                            IconButton(
+                                onClick = { vm.setPreviewMinimized(true) },
+                                modifier = Modifier.size(80.dp)
+                            ) {
                                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Minimér kamera")
                             }
                         }
@@ -275,7 +297,10 @@ class MainActivity : ComponentActivity() {
                 }
                 if (previewMinimized) {
                     Box(Modifier.fillMaxWidth()) {
-                        IconButton(onClick = { vm.setPreviewMinimized(false) }, modifier = Modifier.align(Alignment.TopEnd)) {
+                        IconButton(
+                            onClick = { vm.setPreviewMinimized(false) },
+                            modifier = Modifier.align(Alignment.TopEnd).size(80.dp)
+                        ) {
                             Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Vis kamera")
                         }
                     }
@@ -293,7 +318,7 @@ class MainActivity : ComponentActivity() {
                     Text("${distance} m", fontSize = if (previewMinimized) 96.sp else 48.sp, fontWeight = FontWeight.Bold)
                     Text("Afstand", fontSize = if (previewMinimized) 40.sp else 20.sp)
                     Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                    val intervals = lapTimes.takeLast(3).zipWithNext { a, b -> b - a }
+                    val intervals = lapTimes.takeLast(4).zipWithNext { a, b -> b - a }
                     intervals.forEach { Text("${it/1000f}s", fontSize = if (previewMinimized) 64.sp else 32.sp) }
                 }
             }
