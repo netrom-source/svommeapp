@@ -1,6 +1,7 @@
 package com.example.svommeapp.detector
 
 import android.graphics.Rect
+import android.graphics.RectF
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import kotlin.math.abs
@@ -11,7 +12,7 @@ import kotlin.math.abs
  * production ready but demonstrates how a detector could be structured.
  */
 class MotionDetector(
-    private val roi: Rect,
+    private val roiPercent: RectF,
     private val sensitivity: Float = 0.2f,
     private val onMotion: () -> Unit
 ) : ImageAnalysis.Analyzer {
@@ -22,6 +23,12 @@ class MotionDetector(
         val buffer = image.planes[0].buffer
         val data = ByteArray(buffer.remaining())
         buffer.get(data)
+        val roi = Rect(
+            (roiPercent.left * image.width).toInt(),
+            (roiPercent.top * image.height).toInt(),
+            (roiPercent.right * image.width).toInt(),
+            (roiPercent.bottom * image.height).toInt()
+        )
         if (lastFrame != null && lastFrame!!.size >= data.size) {
             var diffSum = 0
             var count = 0
