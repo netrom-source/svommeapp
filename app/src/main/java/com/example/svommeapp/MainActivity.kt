@@ -22,6 +22,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -68,7 +71,7 @@ class MainActivity : ComponentActivity() {
             SvommeTheme(theme) {
                 if (!permissions.allPermissionsGranted) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Camera and microphone permissions are required")
+                        Text("Kamera- og mikrofontilladelser er påkrævet")
                     }
                 } else {
                     MainScreen()
@@ -85,6 +88,7 @@ class MainActivity : ComponentActivity() {
         val cameraEnabled by vm.cameraEnabled.collectAsState()
         val soundEnabled by vm.soundEnabled.collectAsState()
         val roi by vm.roi.collectAsState()
+        val cameraFacing by vm.cameraFacing.collectAsState()
         val sensitivity by vm.sensitivity.collectAsState()
         val audioThreshold by vm.audioThresholdDb.collectAsState()
         val laneLength by vm.laneLengthMeters.collectAsState()
@@ -96,14 +100,18 @@ class MainActivity : ComponentActivity() {
         val soundLevel by vm.soundLevelDb.collectAsState()
         val debugOverlay by vm.debugOverlay.collectAsState()
         val debugLog by vm.debugLog.collectAsState()
+        val previewMinimized by vm.previewMinimized.collectAsState()
 
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
         val executor = remember { Executors.newSingleThreadExecutor() }
         val previewView = remember { PreviewView(context) }
         var showSettings by remember { mutableStateOf(false) }
+        var showReset by remember { mutableStateOf(false) }
         var motionFlash by remember { mutableStateOf(false) }
         var soundFlash by remember { mutableStateOf(false) }
+        var hasFront by remember { mutableStateOf(false) }
+        var hasBack by remember { mutableStateOf(false) }
 
         LaunchedEffect(motionLevel) {
             if (motionLevel > sensitivity) {
@@ -121,9 +129,21 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        LaunchedEffect(cameraEnabled, roi, sensitivity) {
+        LaunchedEffect(Unit) {
+            val provider = ProcessCameraProvider.getInstance(context)
+            provider.addListener({
+                val p = provider.get()
+                hasFront = p.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
+                hasBack = p.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)
+                if (!hasBack && hasFront) {
+                    vm.setCameraFacing(CameraFacing.FRONT)
+                }
+            }, ContextCompat.getMainExecutor(context))
+        }
+
+        LaunchedEffect(cameraEnabled, roi, sensitivity, cameraFacing) {
             if (cameraEnabled) {
-                startCamera(previewView, executor, roi, sensitivity, lifecycleOwner)
+                startCamera(previewView, executor, roi, sensitivity, lifecycleOwner, cameraFacing)
             } else {
                 stopCamera()
             }
@@ -136,12 +156,22 @@ class MainActivity : ComponentActivity() {
         Scaffold(topBar = {
             TopAppBar(title = { Text("Svømme") }, actions = {
                 IconButton(onClick = { showSettings = true }) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    Icon(Icons.Default.Settings, contentDescription = "Indstillinger")
                 }
             })
-        }, floatingActionButton = {
-            FloatingActionButton(onClick = { vm.toggleCounting() }, backgroundColor = if (counting) MaterialTheme.colors.secondary else MaterialTheme.colors.primary) {
-                Text(if (counting) "Stop" else "Start")
+        }, bottomBar = {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = { vm.toggleCounting() }, modifier = Modifier.weight(1f)) {
+                    Text(if (counting) "Stop" else "Start")
+                }
+                Button(onClick = { showReset = true }, modifier = Modifier.weight(1f)) {
+                    Text("Nulstil")
+                }
             }
         }) { padding ->
             Column(
@@ -149,25 +179,69 @@ class MainActivity : ComponentActivity() {
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
-                    RoiOverlay(roi = roi, highlight = motionFlash, onChange = { vm.updateRoi(it) })
-                    if (soundFlash) {
-                        Box(Modifier.fillMaxSize().background(Color.Red.copy(alpha = 0.2f)))
-                    }
-                    if (debugOverlay) {
-                        Column(Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.5f)).padding(4.dp)) {
-                            Text("Motion: ${"%.2f".format(motionLevel)} / ${"%.2f".format(sensitivity)}", color = Color.White, fontSize = 12.sp)
-                            Text("Sound: ${"%.1f".format(soundLevel)} / $audioThreshold dB", color = Color.White, fontSize = 12.sp)
+                if (previewMinimized) {
+                    Box(Modifier.size(150.dp).align(Alignment.End)) {
+                        AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
+                        Row(Modifier.align(Alignment.TopEnd)) {
+                            IconButton(
+                                onClick = {
+                                    vm.setCameraFacing(if (cameraFacing == CameraFacing.BACK) CameraFacing.FRONT else CameraFacing.BACK)
+                                },
+                                enabled = hasFront && hasBack
+                            ) {
+                                Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
+                            }
+                            IconButton(onClick = { vm.setPreviewMinimized(false) }) {
+                                Icon(Icons.Default.Fullscreen, contentDescription = "Udvid kamera")
+                            }
                         }
-                        Column(
-                            Modifier.align(Alignment.BottomStart)
-                                .background(Color.Black.copy(alpha = 0.5f))
-                                .padding(4.dp)
-                                .height(100.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            debugLog.forEach { Text(it, color = Color.White, fontSize = 10.sp) }
+                    }
+                } else {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
+                        RoiOverlay(roi = roi, highlight = motionFlash, onChange = { vm.updateRoi(it) })
+                        if (soundFlash) {
+                            Box(Modifier.fillMaxSize().background(Color.Red.copy(alpha = 0.2f)))
+                        }
+                        if (debugOverlay) {
+                            Column(Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.5f)).padding(4.dp)) {
+                                Text("Bevægelse: ${"%.2f".format(motionLevel)} / ${"%.2f".format(sensitivity)}", color = Color.White, fontSize = 12.sp)
+                                Text("Lyd: ${"%.1f".format(soundLevel)} / $audioThreshold dB", color = Color.White, fontSize = 12.sp)
+                            }
+                            Column(
+                                Modifier.align(Alignment.BottomStart)
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .padding(4.dp)
+                                    .height(100.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                debugLog.forEach { Text(it, color = Color.White, fontSize = 10.sp) }
+                            }
+                        }
+                        Row(Modifier.align(Alignment.TopEnd)) {
+                            IconButton(
+                                onClick = {
+                                    vm.setCameraFacing(if (cameraFacing == CameraFacing.BACK) CameraFacing.FRONT else CameraFacing.BACK)
+                                },
+                                enabled = hasFront && hasBack
+                            ) {
+                                Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
+                            }
+                            IconButton(onClick = { vm.setPreviewMinimized(true) }) {
+                                Icon(Icons.Default.FullscreenExit, contentDescription = "Minimér kamera")
+                            }
+                        }
+                        if (!hasFront || !hasBack) {
+                            val msg = if (!hasBack) "Bagkamera mangler" else "Frontkamera mangler"
+                            Text(
+                                msg,
+                                color = Color.White,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .background(Color.Black.copy(alpha = 0.5f))
+                                    .padding(4.dp),
+                                fontSize = 12.sp
+                            )
                         }
                     }
                 }
@@ -177,13 +251,19 @@ class MainActivity : ComponentActivity() {
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("$laps", fontSize = 96.sp, fontWeight = FontWeight.Bold)
-                    Text("Omgange", fontSize = 20.sp)
-                    Text("${distance} m", fontSize = 48.sp, fontWeight = FontWeight.Bold)
-                    Text("Distance", fontSize = 20.sp)
-                    Text("Intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                    if (previewMinimized) {
+                        Row {
+                            if (cameraEnabled) Text("📷", fontSize = 32.sp)
+                            if (soundEnabled) Text("🔊", fontSize = 32.sp)
+                        }
+                    }
+                    Text("$laps", fontSize = if (previewMinimized) 192.sp else 96.sp, fontWeight = FontWeight.Bold)
+                    Text("Omgange", fontSize = if (previewMinimized) 40.sp else 20.sp)
+                    Text("${distance} m", fontSize = if (previewMinimized) 96.sp else 48.sp, fontWeight = FontWeight.Bold)
+                    Text("Afstand", fontSize = if (previewMinimized) 40.sp else 20.sp)
+                    Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     val intervals = lapTimes.takeLast(3).zipWithNext { a, b -> b - a }
-                    intervals.forEach { Text("${it/1000f}s", fontSize = 32.sp) }
+                    intervals.forEach { Text("${it/1000f}s", fontSize = if (previewMinimized) 64.sp else 32.sp) }
                 }
             }
         }
@@ -211,6 +291,22 @@ class MainActivity : ComponentActivity() {
                 onDismiss = { showSettings = false }
             )
         }
+
+        if (showReset) {
+            AlertDialog(
+                onDismissRequest = { showReset = false },
+                title = { Text("Nulstil alt?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.reset()
+                        showReset = false
+                    }) { Text("Ja") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showReset = false }) { Text("Nej") }
+                }
+            )
+        }
     }
 
     private fun startCamera(
@@ -218,7 +314,8 @@ class MainActivity : ComponentActivity() {
         executor: Executor,
         roi: RectF,
         sensitivity: Float,
-        lifecycleOwner: androidx.lifecycle.LifecycleOwner
+        lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+        facing: CameraFacing
     ) {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
@@ -236,7 +333,12 @@ class MainActivity : ComponentActivity() {
             }
             analysis.setAnalyzer(executor, motionDetector!!)
             provider.unbindAll()
-            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+            val selector = if (facing == CameraFacing.FRONT) {
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            } else {
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -337,24 +439,24 @@ private fun SettingsDialog(
                     .width(300.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Camera counting", Modifier.weight(1f))
+                    Text("Kamera-tælling", Modifier.weight(1f))
                     Switch(cameraEnabled, onCameraEnabledChange)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sound counting", Modifier.weight(1f))
+                    Text("Lyd-tælling", Modifier.weight(1f))
                     Switch(soundEnabled, onSoundEnabledChange)
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Camera sensitivity: ${"%.2f".format(sensitivity)}")
+                Text("Kamera følsomhed: ${"%.2f".format(sensitivity)}")
                 Slider(value = sensitivity, onValueChange = onSensitivityChange, valueRange = 0f..1f)
-                Text("Audio threshold (dB): $audioThreshold")
+                Text("Lydtærskel (dB): $audioThreshold")
                 Slider(
                     value = audioThreshold.toFloat(),
                     onValueChange = { onAudioThresholdChange(it.toInt()) },
                     valueRange = 50f..120f
                 )
                 Spacer(Modifier.height(8.dp))
-                Text("Lane length (m)")
+                Text("Banelængde (m)")
                 var laneText by remember { mutableStateOf(laneLength.toString()) }
                 TextField(
                     laneText,
@@ -365,7 +467,7 @@ private fun SettingsDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("2 turns = 1 lap", Modifier.weight(1f))
+                    Text("2 vendinger = 1 omgang", Modifier.weight(1f))
                     Switch(checked = turnsPerLap == 2, onCheckedChange = {
                         onTurnsPerLapChange(if (it) 2 else 1)
                     })
@@ -382,20 +484,25 @@ private fun SettingsDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Debug overlay", Modifier.weight(1f))
+                    Text("Fejlretningslag", Modifier.weight(1f))
                     Switch(debugOverlay, onDebugOverlayChange)
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Theme")
+                Text("Tema")
                 ThemeMode.values().forEach { mode ->
+                    val label = when (mode) {
+                        ThemeMode.AUTO -> "Auto"
+                        ThemeMode.LIGHT -> "Lys"
+                        ThemeMode.DARK -> "Mørk"
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) })
-                        Text(mode.name.lowercase().replaceFirstChar { c -> c.titlecase() })
+                        Text(label)
                     }
                 }
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
-                    Text("Close")
+                    Text("Luk")
                 }
             }
         }
