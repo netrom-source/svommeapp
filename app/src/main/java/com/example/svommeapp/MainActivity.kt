@@ -45,6 +45,7 @@ import com.example.svommeapp.detector.SoundDetector
 import com.example.svommeapp.ui.theme.SvommeTheme
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import kotlinx.coroutines.delay
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
@@ -90,12 +91,35 @@ class MainActivity : ComponentActivity() {
         val minInterval by vm.minIntervalMs.collectAsState()
         val turnsPerLap by vm.turnsPerLap.collectAsState()
         val themeMode by vm.themeMode.collectAsState()
+        val counting by vm.counting.collectAsState()
+        val motionLevel by vm.motionLevel.collectAsState()
+        val soundLevel by vm.soundLevelDb.collectAsState()
+        val debugOverlay by vm.debugOverlay.collectAsState()
+        val debugLog by vm.debugLog.collectAsState()
 
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
         val executor = remember { Executors.newSingleThreadExecutor() }
         val previewView = remember { PreviewView(context) }
         var showSettings by remember { mutableStateOf(false) }
+        var motionFlash by remember { mutableStateOf(false) }
+        var soundFlash by remember { mutableStateOf(false) }
+
+        LaunchedEffect(motionLevel) {
+            if (motionLevel > sensitivity) {
+                motionFlash = true
+                delay(200)
+                motionFlash = false
+            }
+        }
+
+        LaunchedEffect(soundLevel) {
+            if (soundLevel > audioThreshold) {
+                soundFlash = true
+                delay(200)
+                soundFlash = false
+            }
+        }
 
         LaunchedEffect(cameraEnabled, roi, sensitivity) {
             if (cameraEnabled) {
@@ -115,6 +139,10 @@ class MainActivity : ComponentActivity() {
                     Icon(Icons.Default.Settings, contentDescription = "Settings")
                 }
             })
+        }, floatingActionButton = {
+            FloatingActionButton(onClick = { vm.toggleCounting() }, backgroundColor = if (counting) MaterialTheme.colors.secondary else MaterialTheme.colors.primary) {
+                Text(if (counting) "Stop" else "Start")
+            }
         }) { padding ->
             Column(
                 Modifier
@@ -123,7 +151,25 @@ class MainActivity : ComponentActivity() {
             ) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
-                    RoiOverlay(roi = roi, onChange = { vm.updateRoi(it) })
+                    RoiOverlay(roi = roi, highlight = motionFlash, onChange = { vm.updateRoi(it) })
+                    if (soundFlash) {
+                        Box(Modifier.fillMaxSize().background(Color.Red.copy(alpha = 0.2f)))
+                    }
+                    if (debugOverlay) {
+                        Column(Modifier.align(Alignment.TopStart).background(Color.Black.copy(alpha = 0.5f)).padding(4.dp)) {
+                            Text("Motion: ${"%.2f".format(motionLevel)} / ${"%.2f".format(sensitivity)}", color = Color.White, fontSize = 12.sp)
+                            Text("Sound: ${"%.1f".format(soundLevel)} / $audioThreshold dB", color = Color.White, fontSize = 12.sp)
+                        }
+                        Column(
+                            Modifier.align(Alignment.BottomStart)
+                                .background(Color.Black.copy(alpha = 0.5f))
+                                .padding(4.dp)
+                                .height(100.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            debugLog.forEach { Text(it, color = Color.White, fontSize = 10.sp) }
+                        }
+                    }
                 }
                 Column(
                     Modifier
@@ -160,6 +206,8 @@ class MainActivity : ComponentActivity() {
                 onTurnsPerLapChange = vm::updateTurnsPerLap,
                 themeMode = themeMode,
                 onThemeModeChange = vm::updateThemeMode,
+                debugOverlay = debugOverlay,
+                onDebugOverlayChange = vm::setDebugOverlay,
                 onDismiss = { showSettings = false }
             )
         }
@@ -180,8 +228,11 @@ class MainActivity : ComponentActivity() {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
             val analysis = ImageAnalysis.Builder().build()
-            motionDetector = MotionDetector(roi, sensitivity) {
-                vm.onTurnDetected()
+            motionDetector = MotionDetector(roi) { level ->
+                vm.reportMotion(level)
+                if (level > sensitivity) {
+                    vm.onTurnDetected()
+                }
             }
             analysis.setAnalyzer(executor, motionDetector!!)
             provider.unbindAll()
@@ -196,8 +247,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startSound(threshold: Int) {
-        soundDetector = SoundDetector(threshold) {
-            vm.onTurnDetected()
+        soundDetector = SoundDetector { db ->
+            vm.reportSound(db)
+            if (db > threshold) {
+                vm.onTurnDetected()
+            }
         }
         soundDetector?.start()
     }
@@ -209,7 +263,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RoiOverlay(roi: RectF, onChange: (RectF) -> Unit) {
+private fun RoiOverlay(roi: RectF, highlight: Boolean, onChange: (RectF) -> Unit) {
     var parentSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
     Box(Modifier.fillMaxSize().onSizeChanged { parentSize = it }) {
@@ -224,7 +278,9 @@ private fun RoiOverlay(roi: RectF, onChange: (RectF) -> Unit) {
                 Modifier
                     .offset(x = offsetX, y = offsetY)
                     .size(width, height)
-                    .border(BorderStroke(2.dp, MaterialTheme.colors.primary))
+                    .border(
+                        BorderStroke(2.dp, if (highlight) Color.Red else MaterialTheme.colors.primary)
+                    )
                     .pointerInput(parentSize) {
                         detectTransformGestures { _, pan, zoom, _ ->
                             var newWidth = rect.width() * zoom
@@ -268,6 +324,8 @@ private fun SettingsDialog(
     onTurnsPerLapChange: (Int) -> Unit,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    debugOverlay: Boolean,
+    onDebugOverlayChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -323,6 +381,10 @@ private fun SettingsDialog(
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Debug overlay", Modifier.weight(1f))
+                    Switch(debugOverlay, onDebugOverlayChange)
+                }
                 Spacer(Modifier.height(8.dp))
                 Text("Theme")
                 ThemeMode.values().forEach { mode ->
