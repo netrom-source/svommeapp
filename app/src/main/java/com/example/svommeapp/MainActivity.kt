@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +64,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.delay
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val vm: LapCounterViewModel by viewModels()
@@ -207,7 +209,7 @@ class MainActivity : ComponentActivity() {
 
         Scaffold(topBar = {
             TopAppBar(title = { Text("Fars Svøm-o-meter") }, actions = {
-                IconButton(onClick = { showSessionIntervals = true }) {
+                IconButton(onClick = { showSessionIntervals = true }, enabled = counting) {
                     Icon(Icons.Filled.List, contentDescription = "Sessionens intervaller")
                 }
                 IconButton(onClick = { showHistory = true }) {
@@ -240,7 +242,8 @@ class MainActivity : ComponentActivity() {
                     onClick = { showReset = true },
                     modifier = Modifier
                         .weight(1f)
-                        .height(80.dp)
+                        .height(80.dp),
+                    enabled = counting
                 ) {
                     Text(
                         "Nulstil",
@@ -335,11 +338,25 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (counting) Color(0xFF388E3C) else Color.Red)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (counting) "Tæller aktiv" else "Tæller ikke startet",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Column(
                     (if (previewMinimized) Modifier.weight(1f) else Modifier)
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
+                        .padding(16.dp)
+                        .alpha(if (counting) 1f else 0.3f),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = if (previewMinimized) Arrangement.Center else Arrangement.Top
                 ) {
@@ -353,7 +370,9 @@ class MainActivity : ComponentActivity() {
                     repeat(3) { idx ->
                         val value = last.getOrNull(idx)
                         Text(
-                            text = value?.let { "${it/1000f}s" } ?: "-",
+                            text = value?.let {
+                                String.format(Locale.getDefault(), "%.1f s", it / 1000f)
+                            } ?: "-",
                             fontSize = if (previewMinimized) 64.sp else 32.sp
                         )
                     }
@@ -656,13 +675,13 @@ private fun SessionIntervalsDialog(lapTimes: List<Long>, onDismiss: () -> Unit) 
             Column(Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 Text("Sessionens intervaller", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Text("Omgange: ${intervals.size}")
-                Text("Samlet tid: ${totalTime/1000}s")
-                Text("Gennemsnit: ${"%.1f".format(avg/1000)}s")
-                Text("Hurtigste: ${fastest/1000f}s")
-                Text("Langsomste: ${slowest/1000f}s")
+                Text("Samlet tid: " + String.format(Locale.getDefault(), "%.1f s", totalTime / 1000f))
+                Text("Gennemsnit: " + String.format(Locale.getDefault(), "%.1f s", avg / 1000))
+                Text("Hurtigste: " + String.format(Locale.getDefault(), "%.1f s", fastest / 1000f))
+                Text("Langsomste: " + String.format(Locale.getDefault(), "%.1f s", slowest / 1000f))
                 Spacer(Modifier.height(8.dp))
                 intervals.forEachIndexed { idx, it ->
-                    Text("#${idx+1}: ${it/1000f}s", fontSize = 16.sp)
+                    Text("#${idx+1}: " + String.format(Locale.getDefault(), "%.1f s", it / 1000f), fontSize = 16.sp)
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Luk") }
