@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.History
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
@@ -116,7 +118,7 @@ class MainActivity : ComponentActivity() {
     private fun MainScreen() {
         val laps by vm.laps.collectAsState()
         val distance by vm.distanceMeters.collectAsState()
-        val lapTimes by vm.lastLapTimes.collectAsState()
+        val lapTimes by vm.lapTimestamps.collectAsState()
         val cameraEnabled by vm.cameraEnabled.collectAsState()
         val soundEnabled by vm.soundEnabled.collectAsState()
         val roi by vm.roi.collectAsState()
@@ -142,6 +144,8 @@ class MainActivity : ComponentActivity() {
         val previewView = remember { PreviewView(context) }
         var showSettings by remember { mutableStateOf(false) }
         var showReset by remember { mutableStateOf(false) }
+        var showSessionIntervals by remember { mutableStateOf(false) }
+        var showHistory by remember { mutableStateOf(false) }
         var motionFlash by remember { mutableStateOf(false) }
         var soundFlash by remember { mutableStateOf(false) }
         var hasFront by remember { mutableStateOf(false) }
@@ -181,9 +185,17 @@ class MainActivity : ComponentActivity() {
             }, ContextCompat.getMainExecutor(context))
         }
 
-        LaunchedEffect(cameraEnabled, roi, sensitivity, cameraFacing) {
+        LaunchedEffect(cameraEnabled, roi, sensitivity, cameraFacing, previewMinimized) {
             if (cameraEnabled) {
-                startCamera(previewView, executor, roi, sensitivity, lifecycleOwner, cameraFacing)
+                startCamera(
+                    previewView,
+                    executor,
+                    roi,
+                    sensitivity,
+                    lifecycleOwner,
+                    cameraFacing,
+                    !previewMinimized
+                )
             } else {
                 stopCamera()
             }
@@ -195,6 +207,12 @@ class MainActivity : ComponentActivity() {
 
         Scaffold(topBar = {
             TopAppBar(title = { Text("Fars Svøm-o-meter") }, actions = {
+                IconButton(onClick = { showSessionIntervals = true }) {
+                    Icon(Icons.Default.List, contentDescription = "Sessionens intervaller")
+                }
+                IconButton(onClick = { showHistory = true }) {
+                    Icon(Icons.Default.History, contentDescription = "Historik")
+                }
                 IconButton(onClick = { showSettings = true }) {
                     Icon(Icons.Default.Settings, contentDescription = "Indstillinger")
                 }
@@ -264,21 +282,30 @@ class MainActivity : ComponentActivity() {
                                 debugLog.forEach { Text(it, color = Color.White, fontSize = 10.sp) }
                             }
                         }
-                        Row(Modifier.align(Alignment.TopEnd)) {
-                            IconButton(
+                        Row(
+                            Modifier.align(Alignment.TopEnd),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
                                 onClick = {
                                     vm.setCameraFacing(if (cameraFacing == CameraFacing.BACK) CameraFacing.FRONT else CameraFacing.BACK)
                                 },
                                 enabled = hasFront && hasBack,
-                                modifier = Modifier.size(80.dp)
+                                modifier = Modifier.size(96.dp)
                             ) {
-                                Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
+                                    Text("Skift", fontSize = 14.sp)
+                                }
                             }
-                            IconButton(
+                            Button(
                                 onClick = { vm.setPreviewMinimized(true) },
-                                modifier = Modifier.size(80.dp)
+                                modifier = Modifier.size(96.dp)
                             ) {
-                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Minimér kamera")
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Minimér kamera")
+                                    Text("Minimér", fontSize = 14.sp)
+                                }
                             }
                         }
                         if (!hasFront || !hasBack) {
@@ -297,11 +324,14 @@ class MainActivity : ComponentActivity() {
                 }
                 if (previewMinimized) {
                     Box(Modifier.fillMaxWidth()) {
-                        IconButton(
+                        Button(
                             onClick = { vm.setPreviewMinimized(false) },
-                            modifier = Modifier.align(Alignment.TopEnd).size(80.dp)
+                            modifier = Modifier.align(Alignment.TopEnd).size(96.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Vis kamera")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Vis kamera")
+                                Text("Vis", fontSize = 14.sp)
+                            }
                         }
                     }
                 }
@@ -318,8 +348,15 @@ class MainActivity : ComponentActivity() {
                     Text("${distance} m", fontSize = if (previewMinimized) 96.sp else 48.sp, fontWeight = FontWeight.Bold)
                     Text("Afstand", fontSize = if (previewMinimized) 40.sp else 20.sp)
                     Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
-                    val intervals = lapTimes.takeLast(4).zipWithNext { a, b -> b - a }
-                    intervals.forEach { Text("${it/1000f}s", fontSize = if (previewMinimized) 64.sp else 32.sp) }
+                    val intervals = lapTimes.zipWithNext { a, b -> b - a }
+                    val last = intervals.takeLast(3)
+                    repeat(3) { idx ->
+                        val value = last.getOrNull(idx)
+                        Text(
+                            text = value?.let { "${it/1000f}s" } ?: "-",
+                            fontSize = if (previewMinimized) 64.sp else 32.sp
+                        )
+                    }
                 }
             }
         }
@@ -352,6 +389,14 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        if (showSessionIntervals) {
+            SessionIntervalsDialog(lapTimes = lapTimes, onDismiss = { showSessionIntervals = false })
+        }
+
+        if (showHistory) {
+            HistoryDialog(historyFlow = vm.history, onDismiss = { showHistory = false })
+        }
+
         if (showReset) {
             AlertDialog(
                 onDismissRequest = { showReset = false },
@@ -375,30 +420,36 @@ class MainActivity : ComponentActivity() {
         roi: RectF,
         sensitivity: Float,
         lifecycleOwner: androidx.lifecycle.LifecycleOwner,
-        facing: CameraFacing
+        facing: CameraFacing,
+        showPreview: Boolean
     ) {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
             cameraProvider = provider
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
+            val useCases = mutableListOf<androidx.camera.core.UseCase>()
+            if (showPreview) {
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+                useCases += preview
             }
             val analysis = ImageAnalysis.Builder().build()
             motionDetector = MotionDetector(roi) { level ->
                 vm.reportMotion(level)
                 if (level > sensitivity) {
-                    vm.onTurnDetected()
+                    vm.onTurnDetected("camera")
                 }
             }
             analysis.setAnalyzer(executor, motionDetector!!)
+            useCases += analysis
             provider.unbindAll()
             val selector = if (facing == CameraFacing.FRONT) {
                 CameraSelector.DEFAULT_FRONT_CAMERA
             } else {
                 CameraSelector.DEFAULT_BACK_CAMERA
             }
-            provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+            provider.bindToLifecycle(lifecycleOwner, selector, *useCases.toTypedArray())
         }, ContextCompat.getMainExecutor(this))
     }
 
@@ -412,7 +463,7 @@ class MainActivity : ComponentActivity() {
         soundDetector = SoundDetector { db ->
             vm.reportSound(db)
             if (db > threshold) {
-                vm.onTurnDetected()
+                vm.onTurnDetected("audio")
             }
         }
         soundDetector?.start()
@@ -502,22 +553,34 @@ private fun SettingsDialog(
                     .verticalScroll(rememberScrollState())
                     .width(300.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Kamera-tælling", Modifier.weight(1f))
-                    Switch(cameraEnabled, onCameraEnabledChange)
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Kamera-tælling", Modifier.weight(1f), fontSize = 20.sp)
+                    Switch(cameraEnabled, onCameraEnabledChange, modifier = Modifier.size(72.dp))
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Lyd-tælling", Modifier.weight(1f))
-                    Switch(soundEnabled, onSoundEnabledChange)
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(72.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Lyd-tælling", Modifier.weight(1f), fontSize = 20.sp)
+                    Switch(soundEnabled, onSoundEnabledChange, modifier = Modifier.size(72.dp))
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("Kamera følsomhed: ${"%.2f".format(sensitivity)}")
-                Slider(value = sensitivity, onValueChange = onSensitivityChange, valueRange = 0f..1f)
-                Text("Lydtærskel (dB): $audioThreshold")
+                Text("Kamera følsomhed: ${"%.2f".format(sensitivity)}", fontSize = 18.sp)
+                Slider(
+                    value = sensitivity,
+                    onValueChange = onSensitivityChange,
+                    valueRange = 0f..1f,
+                    modifier = Modifier.height(72.dp)
+                )
+                Text("Lydtærskel (dB): $audioThreshold", fontSize = 18.sp)
                 Slider(
                     value = audioThreshold.toFloat(),
                     onValueChange = { onAudioThresholdChange(it.toInt()) },
-                    valueRange = 50f..120f
+                    valueRange = 50f..120f,
+                    modifier = Modifier.height(72.dp)
                 )
                 Spacer(Modifier.height(8.dp))
                 Text("Banelængde (m)")
@@ -576,6 +639,69 @@ private fun SettingsDialog(
                 Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                     Text("Luk")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionIntervalsDialog(lapTimes: List<Long>, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colors.background) {
+            val intervals = lapTimes.zipWithNext { a, b -> b - a }
+            val totalTime = if (lapTimes.size < 2) 0L else lapTimes.last() - lapTimes.first()
+            val avg = if (intervals.isEmpty()) 0.0 else intervals.average()
+            val fastest = intervals.minOrNull() ?: 0L
+            val slowest = intervals.maxOrNull() ?: 0L
+            Column(Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                Text("Sessionens intervaller", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Omgange: ${intervals.size}")
+                Text("Samlet tid: ${totalTime/1000}s")
+                Text("Gennemsnit: ${"%.1f".format(avg/1000)}s")
+                Text("Hurtigste: ${fastest/1000f}s")
+                Text("Langsomste: ${slowest/1000f}s")
+                Spacer(Modifier.height(8.dp))
+                intervals.forEachIndexed { idx, it ->
+                    Text("#${idx+1}: ${it/1000f}s", fontSize = 16.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Luk") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryDialog(historyFlow: kotlinx.coroutines.flow.Flow<List<com.example.svommeapp.data.SessionWithLaps>>, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colors.background) {
+            val sessions by historyFlow.collectAsState(initial = emptyList())
+            val context = LocalContext.current
+            Column(Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                Text("Historik", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                sessions.forEach { swl ->
+                    val count = swl.laps.size
+                    val start = swl.session.startedAt
+                    val end = swl.session.endedAt ?: 0L
+                    val total = if (count > 0) swl.laps.last().timestamp - swl.laps.first().timestamp else 0L
+                    Text("${start} - ${end} : $count omgange, ${total/1000}s")
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    val text = buildString {
+                        append("session_id,started_at,ended_at,lap_timestamp,duration_ms,source\n")
+                        sessions.forEach { s ->
+                            s.laps.forEach { l ->
+                                append("${s.session.id},${s.session.startedAt},${s.session.endedAt},${l.timestamp},${l.durationMs},${l.source}\n")
+                            }
+                        }
+                    }
+                    val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    dir.mkdirs()
+                    val file = java.io.File(dir, "svomme_history.csv")
+                    file.writeText(text)
+                }) { Text("Eksportér CSV") }
+                Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Luk") }
             }
         }
     }
