@@ -208,7 +208,7 @@ class MainActivity : ComponentActivity() {
         Scaffold(topBar = {
             TopAppBar(title = { Text("Fars Svøm-o-meter") }, actions = {
                 IconButton(onClick = { showSessionIntervals = true }) {
-                    Icon(Icons.Default.List, contentDescription = "Sessionens intervaller")
+                    Icon(Icons.Filled.List, contentDescription = "Sessionens intervaller")
                 }
                 IconButton(onClick = { showHistory = true }) {
                     Icon(Icons.Default.History, contentDescription = "Historik")
