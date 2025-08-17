@@ -66,6 +66,9 @@ import kotlinx.coroutines.delay
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.Locale
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     private val vm: LapCounterViewModel by viewModels()
@@ -737,14 +740,15 @@ private fun HistoryDialog(historyFlow: kotlinx.coroutines.flow.Flow<List<com.exa
         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colors.background) {
             val sessions by historyFlow.collectAsState(initial = emptyList())
             val context = LocalContext.current
+            val formatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss") }
             Column(Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
                 Text("Historik", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 sessions.forEach { swl ->
                     val count = swl.laps.size
-                    val start = swl.session.startedAt
-                    val end = swl.session.endedAt ?: 0L
                     val total = if (count > 0) swl.laps.last().timestamp - swl.laps.first().timestamp else 0L
-                    Text("${start} - ${end} : $count omgange, ${total/1000}s")
+                    val start = Instant.ofEpochMilli(swl.session.startedAt).atZone(ZoneId.systemDefault()).format(formatter)
+                    val end = swl.session.endedAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(formatter) } ?: "-"
+                    Text("$start - $end : $count omgange, ${total/1000}s")
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = {
