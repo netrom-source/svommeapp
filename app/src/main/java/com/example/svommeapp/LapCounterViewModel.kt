@@ -43,13 +43,24 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     private val _audioThresholdDb = MutableStateFlow(prefs.getInt("audioThreshold", 80))
     val audioThresholdDb: StateFlow<Int> = _audioThresholdDb
 
+    // ROI is stored separately for front and back cameras
+    private fun loadRoi(prefix: String): RectF = RectF(
+        prefs.getFloat("roi_${prefix}_x", 0.3f),
+        prefs.getFloat("roi_${prefix}_y", 0.3f),
+        prefs.getFloat("roi_${prefix}_x", 0.3f) + prefs.getFloat("roi_${prefix}_w", 0.4f),
+        prefs.getFloat("roi_${prefix}_y", 0.3f) + prefs.getFloat("roi_${prefix}_h", 0.4f)
+    )
+
+    private val _roiBack = MutableStateFlow(loadRoi("back"))
+    private val _roiFront = MutableStateFlow(loadRoi("front"))
+
+    private val _cameraFacing = MutableStateFlow(
+        CameraFacing.valueOf(prefs.getString("cameraFacing", CameraFacing.BACK.name)!!)
+    )
+    val cameraFacing: StateFlow<CameraFacing> = _cameraFacing
+
     private val _roi = MutableStateFlow(
-        RectF(
-            prefs.getFloat("roiX", 0.3f),
-            prefs.getFloat("roiY", 0.3f),
-            prefs.getFloat("roiX", 0.3f) + prefs.getFloat("roiW", 0.4f),
-            prefs.getFloat("roiY", 0.3f) + prefs.getFloat("roiH", 0.4f)
-        )
+        if (_cameraFacing.value == CameraFacing.BACK) _roiBack.value else _roiFront.value
     )
     val roi: StateFlow<RectF> = _roi
 
@@ -81,6 +92,9 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     val debugOverlay: StateFlow<Boolean> = _debugOverlay
 
     private var lastTriggerTime: Long = 0
+
+    private val _previewMinimized = MutableStateFlow(prefs.getBoolean("previewMinimized", false))
+    val previewMinimized: StateFlow<Boolean> = _previewMinimized
 
     fun setCameraEnabled(enabled: Boolean) {
         _cameraEnabled.value = enabled
@@ -133,13 +147,34 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateRoi(rect: RectF) {
+        if (_cameraFacing.value == CameraFacing.BACK) {
+            _roiBack.value = rect
+            saveRoi("back", rect)
+        } else {
+            _roiFront.value = rect
+            saveRoi("front", rect)
+        }
         _roi.value = rect
+    }
+
+    private fun saveRoi(prefix: String, rect: RectF) {
         prefs.edit()
-            .putFloat("roiX", rect.left)
-            .putFloat("roiY", rect.top)
-            .putFloat("roiW", rect.width())
-            .putFloat("roiH", rect.height())
+            .putFloat("roi_${prefix}_x", rect.left)
+            .putFloat("roi_${prefix}_y", rect.top)
+            .putFloat("roi_${prefix}_w", rect.width())
+            .putFloat("roi_${prefix}_h", rect.height())
             .apply()
+    }
+
+    fun setCameraFacing(facing: CameraFacing) {
+        _cameraFacing.value = facing
+        prefs.edit().putString("cameraFacing", facing.name).apply()
+        _roi.value = if (facing == CameraFacing.BACK) _roiBack.value else _roiFront.value
+    }
+
+    fun setPreviewMinimized(minimized: Boolean) {
+        _previewMinimized.value = minimized
+        prefs.edit().putBoolean("previewMinimized", minimized).apply()
     }
 
     fun onTurnDetected(timestamp: Long = System.currentTimeMillis()) {
