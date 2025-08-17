@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             val permissions = rememberMultiplePermissionsState(
                 listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -365,21 +366,26 @@ class MainActivity : ComponentActivity() {
                     Text("Afstand", fontSize = if (previewMinimized) 40.sp else 20.sp)
                     Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     val intervals = lapTimes.zipWithNext { a, b -> b - a }
-                    val last = intervals.takeLast(3)
-                    Row(
+                    val last = intervals.takeLast(3).asReversed()
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         repeat(3) { idx ->
                             val value = last.getOrNull(idx)
                             Surface(
                                 modifier = Modifier
-                                    .weight(1f)
+                                    .fillMaxWidth()
                                     .clickable { showSessionIntervals = true },
                                 shape = RoundedCornerShape(8.dp),
                                 border = BorderStroke(1.dp, MaterialTheme.colors.primary)
                             ) {
-                                Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Text(
                                         text = value?.let {
                                             String.format(Locale.getDefault(), "%.1f s", it / 1000f)
