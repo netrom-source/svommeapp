@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("kotlin-kapt")
 }
 
 android {
@@ -52,4 +53,7 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.0")
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
     implementation("androidx.compose.material:material-icons-extended:1.5.1")
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
 }
