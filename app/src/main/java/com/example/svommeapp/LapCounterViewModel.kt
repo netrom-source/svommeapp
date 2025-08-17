@@ -96,6 +96,12 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     private val _previewMinimized = MutableStateFlow(prefs.getBoolean("previewMinimized", false))
     val previewMinimized: StateFlow<Boolean> = _previewMinimized
 
+    private val _activationSoundUri = MutableStateFlow(prefs.getString("activationSoundUri", null))
+    val activationSoundUri: StateFlow<String?> = _activationSoundUri
+
+    private val _playSoundOnActivation = MutableStateFlow(prefs.getBoolean("playSoundOnActivation", true))
+    val playSoundOnActivation: StateFlow<Boolean> = _playSoundOnActivation
+
     fun setCameraEnabled(enabled: Boolean) {
         _cameraEnabled.value = enabled
         prefs.edit().putBoolean("cameraEnabled", enabled).apply()
@@ -175,6 +181,16 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     fun setPreviewMinimized(minimized: Boolean) {
         _previewMinimized.value = minimized
         prefs.edit().putBoolean("previewMinimized", minimized).apply()
+    }
+
+    fun setActivationSoundUri(uri: String?) {
+        _activationSoundUri.value = uri
+        prefs.edit().putString("activationSoundUri", uri).apply()
+    }
+
+    fun setPlaySoundOnActivation(enabled: Boolean) {
+        _playSoundOnActivation.value = enabled
+        prefs.edit().putBoolean("playSoundOnActivation", enabled).apply()
     }
 
     fun onTurnDetected(timestamp: Long = System.currentTimeMillis()) {

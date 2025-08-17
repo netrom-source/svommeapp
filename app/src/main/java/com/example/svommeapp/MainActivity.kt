@@ -23,9 +23,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.net.Uri
+import android.content.Intent
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +90,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        val uri = vm.activationSoundUri.value
+        if (vm.playSoundOnActivation.value && uri != null) {
+            try {
+                val player = MediaPlayer()
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                player.setDataSource(this, Uri.parse(uri))
+                player.setOnCompletionListener { it.release() }
+                player.prepare()
+                player.start()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     @Composable
     private fun MainScreen() {
         val laps by vm.laps.collectAsState()
@@ -101,6 +133,8 @@ class MainActivity : ComponentActivity() {
         val debugOverlay by vm.debugOverlay.collectAsState()
         val debugLog by vm.debugLog.collectAsState()
         val previewMinimized by vm.previewMinimized.collectAsState()
+        val activationSoundUri by vm.activationSoundUri.collectAsState()
+        val playSoundOnActivation by vm.playSoundOnActivation.collectAsState()
 
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
@@ -112,6 +146,12 @@ class MainActivity : ComponentActivity() {
         var soundFlash by remember { mutableStateOf(false) }
         var hasFront by remember { mutableStateOf(false) }
         var hasBack by remember { mutableStateOf(false) }
+        val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            uri?.let {
+                context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                vm.setActivationSoundUri(it.toString())
+            }
+        }
 
         LaunchedEffect(motionLevel) {
             if (motionLevel > sensitivity) {
@@ -154,7 +194,7 @@ class MainActivity : ComponentActivity() {
         }
 
         Scaffold(topBar = {
-            TopAppBar(title = { Text("Svømme") }, actions = {
+            TopAppBar(title = { Text("Fars Svøm-o-meter") }, actions = {
                 IconButton(onClick = { showSettings = true }) {
                     Icon(Icons.Default.Settings, contentDescription = "Indstillinger")
                 }
@@ -179,25 +219,13 @@ class MainActivity : ComponentActivity() {
                     .fillMaxSize()
                     .padding(padding)
             ) {
-                if (previewMinimized) {
-                    Box(Modifier.size(150.dp).align(Alignment.End)) {
-                        AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
-                        Row(Modifier.align(Alignment.TopEnd)) {
-                            IconButton(
-                                onClick = {
-                                    vm.setCameraFacing(if (cameraFacing == CameraFacing.BACK) CameraFacing.FRONT else CameraFacing.BACK)
-                                },
-                                enabled = hasFront && hasBack
-                            ) {
-                                Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
-                            }
-                            IconButton(onClick = { vm.setPreviewMinimized(false) }) {
-                                Icon(Icons.Default.Fullscreen, contentDescription = "Udvid kamera")
-                            }
-                        }
-                    }
-                } else {
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                AnimatedVisibility(
+                    visible = !previewMinimized,
+                    enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(250)),
+                    exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(250)),
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                ) {
+                    Box(Modifier.fillMaxSize()) {
                         AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
                         RoiOverlay(roi = roi, highlight = motionFlash, onChange = { vm.updateRoi(it) })
                         if (soundFlash) {
@@ -228,7 +256,7 @@ class MainActivity : ComponentActivity() {
                                 Icon(Icons.Default.Cameraswitch, contentDescription = "Skift kamera")
                             }
                             IconButton(onClick = { vm.setPreviewMinimized(true) }) {
-                                Icon(Icons.Default.FullscreenExit, contentDescription = "Minimér kamera")
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Minimér kamera")
                             }
                         }
                         if (!hasFront || !hasBack) {
@@ -245,18 +273,21 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (previewMinimized) {
-                        Row {
-                            if (cameraEnabled) Text("📷", fontSize = 32.sp)
-                            if (soundEnabled) Text("🔊", fontSize = 32.sp)
+                if (previewMinimized) {
+                    Box(Modifier.fillMaxWidth()) {
+                        IconButton(onClick = { vm.setPreviewMinimized(false) }, modifier = Modifier.align(Alignment.TopEnd)) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Vis kamera")
                         }
                     }
+                }
+                Column(
+                    (if (previewMinimized) Modifier.weight(1f) else Modifier)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = if (previewMinimized) Arrangement.Center else Arrangement.Top
+                ) {
                     Text("$laps", fontSize = if (previewMinimized) 192.sp else 96.sp, fontWeight = FontWeight.Bold)
                     Text("Omgange", fontSize = if (previewMinimized) 40.sp else 20.sp)
                     Text("${distance} m", fontSize = if (previewMinimized) 96.sp else 48.sp, fontWeight = FontWeight.Bold)
@@ -288,6 +319,10 @@ class MainActivity : ComponentActivity() {
                 onThemeModeChange = vm::updateThemeMode,
                 debugOverlay = debugOverlay,
                 onDebugOverlayChange = vm::setDebugOverlay,
+                playSoundOnActivation = playSoundOnActivation,
+                onPlaySoundOnActivationChange = vm::setPlaySoundOnActivation,
+                soundUri = activationSoundUri,
+                onPickSound = { soundPicker.launch(arrayOf("audio/mpeg")) },
                 onDismiss = { showSettings = false }
             )
         }
@@ -428,6 +463,10 @@ private fun SettingsDialog(
     onThemeModeChange: (ThemeMode) -> Unit,
     debugOverlay: Boolean,
     onDebugOverlayChange: (Boolean) -> Unit,
+    playSoundOnActivation: Boolean,
+    onPlaySoundOnActivationChange: (Boolean) -> Unit,
+    soundUri: String?,
+    onPickSound: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -487,6 +526,14 @@ private fun SettingsDialog(
                     Text("Fejlretningslag", Modifier.weight(1f))
                     Switch(debugOverlay, onDebugOverlayChange)
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Aktiveringslyd", Modifier.weight(1f))
+                    Switch(playSoundOnActivation, onPlaySoundOnActivationChange)
+                }
+                Button(onClick = onPickSound, enabled = playSoundOnActivation) {
+                    Text(if (soundUri == null) "Vælg MP3" else "Skift MP3")
+                }
+                soundUri?.let { Text(it, fontSize = 12.sp) }
                 Spacer(Modifier.height(8.dp))
                 Text("Tema")
                 ThemeMode.values().forEach { mode ->
