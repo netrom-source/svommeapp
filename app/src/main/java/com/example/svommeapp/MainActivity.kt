@@ -20,13 +20,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.History
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -50,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -209,9 +209,6 @@ class MainActivity : ComponentActivity() {
 
         Scaffold(topBar = {
             TopAppBar(title = { Text("Fars Svøm-o-meter") }, actions = {
-                IconButton(onClick = { showSessionIntervals = true }, enabled = counting) {
-                    Icon(Icons.Filled.List, contentDescription = "Sessionens intervaller")
-                }
                 IconButton(onClick = { showHistory = true }) {
                     Icon(Icons.Default.History, contentDescription = "Historik")
                 }
@@ -220,51 +217,40 @@ class MainActivity : ComponentActivity() {
                 }
             })
         }, bottomBar = {
-            Column {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(if (counting) Color(0xFF388E3C) else Color.Red)
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { vm.toggleCounting() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(80.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = if (counting) Color.Red else Color(0xFF388E3C),
+                        contentColor = Color.White
+                    )
                 ) {
                     Text(
-                        if (counting) "Tæller aktiv" else "Tæller ikke startet",
-                        color = Color.White,
+                        if (counting) "Stop" else "Start",
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Button(
+                    onClick = { showReset = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(80.dp),
+                    enabled = true
                 ) {
-                    Button(
-                        onClick = { vm.toggleCounting() },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(80.dp),
-                    ) {
-                        Text(
-                            if (counting) "Stop" else "Start",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Button(
-                        onClick = { showReset = true },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(80.dp),
-                        enabled = true
-                    ) {
-                        Text(
-                            "Nulstil",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        "Nulstil",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }) { padding ->
@@ -277,7 +263,7 @@ class MainActivity : ComponentActivity() {
                     visible = !previewMinimized,
                     enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(250)),
                     exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(250)),
-                    modifier = Modifier.fillMaxWidth().weight(1f).zIndex(1f)
+                    modifier = Modifier.fillMaxWidth().weight(1f)
                 ) {
                     Box(Modifier.fillMaxSize()) {
                         AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
@@ -353,12 +339,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
+                val contentModifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .alpha(if (counting) 1f else 0.3f)
+                    .verticalScroll(contentScroll)
                 Column(
-                    (if (previewMinimized) Modifier.weight(1f) else Modifier)
-                        .fillMaxWidth()
-                        .let { if (previewMinimized) it else it.verticalScroll(contentScroll) }
-                        .padding(16.dp)
-                        .alpha(if (counting) 1f else 0.3f),
+                    if (previewMinimized) contentModifier.weight(1f) else contentModifier,
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
                 ) {
@@ -369,14 +356,29 @@ class MainActivity : ComponentActivity() {
                     Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     val intervals = lapTimes.zipWithNext { a, b -> b - a }
                     val last = intervals.takeLast(3)
-                    repeat(3) { idx ->
-                        val value = last.getOrNull(idx)
-                        Text(
-                            text = value?.let {
-                                String.format(Locale.getDefault(), "%.1f s", it / 1000f)
-                            } ?: "-",
-                            fontSize = if (previewMinimized) 64.sp else 32.sp
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        repeat(3) { idx ->
+                            val value = last.getOrNull(idx)
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { showSessionIntervals = true },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colors.primary)
+                            ) {
+                                Box(Modifier.padding(8.dp), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = value?.let {
+                                            String.format(Locale.getDefault(), "%.1f s", it / 1000f)
+                                        } ?: "-",
+                                        fontSize = if (previewMinimized) 64.sp else 32.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -519,8 +521,8 @@ private fun RoiOverlay(roi: RectF, highlight: Boolean, onChange: (RectF) -> Unit
                             var newHeight = rect.height() * zoom
                             newWidth = newWidth.coerceIn(0.05f, 1f)
                             newHeight = newHeight.coerceIn(0.05f, 1f)
-                            val marginX = with(density) { 8.dp.toPx() } / parentSize.width
-                            val marginY = with(density) { 8.dp.toPx() } / parentSize.height
+                            val marginX = with(density) { 2.dp.toPx() } / parentSize.width
+                            val marginY = with(density) { 2.dp.toPx() } / parentSize.height
                             var left = rect.left + pan.x / parentSize.width
                             var top = rect.top + pan.y / parentSize.height
                             left = left.coerceIn(marginX, 1f - marginX - newWidth)
