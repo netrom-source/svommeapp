@@ -427,7 +427,14 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showSessionIntervals) {
-            SessionIntervalsDialog(lapTimes = lapTimes, onDismiss = { showSessionIntervals = false })
+            SessionIntervalsDialog(
+                lapTimes = lapTimes,
+                onClear = {
+                    vm.clearLapHistory()
+                    showSessionIntervals = false
+                },
+                onDismiss = { showSessionIntervals = false }
+            )
         }
 
         if (showHistory) {
@@ -669,7 +676,27 @@ private fun SettingsDialog(
 }
 
 @Composable
-private fun SessionIntervalsDialog(lapTimes: List<Long>, onDismiss: () -> Unit) {
+private fun SessionIntervalsDialog(
+    lapTimes: List<Long>,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var confirmDelete by remember { mutableStateOf(false) }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Slet historik?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onClear()
+                }) { Text("Ja") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Nej") }
+            }
+        )
+    }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colors.background) {
             val intervals = lapTimes.zipWithNext { a, b -> b - a }
@@ -677,7 +704,10 @@ private fun SessionIntervalsDialog(lapTimes: List<Long>, onDismiss: () -> Unit) 
             val avg = if (intervals.isEmpty()) 0.0 else intervals.average()
             val fastest = intervals.minOrNull() ?: 0L
             val slowest = intervals.maxOrNull() ?: 0L
-            Column(Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+            Column(
+                Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text("Sessionens intervaller", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Text("Omgange: ${intervals.size}")
                 Text("Samlet tid: " + String.format(Locale.getDefault(), "%.1f s", totalTime / 1000f))
@@ -686,10 +716,16 @@ private fun SessionIntervalsDialog(lapTimes: List<Long>, onDismiss: () -> Unit) 
                 Text("Langsomste: " + String.format(Locale.getDefault(), "%.1f s", slowest / 1000f))
                 Spacer(Modifier.height(8.dp))
                 intervals.forEachIndexed { idx, it ->
-                    Text("#${idx+1}: " + String.format(Locale.getDefault(), "%.1f s", it / 1000f), fontSize = 16.sp)
+                    Text(
+                        "#${idx + 1}: " + String.format(Locale.getDefault(), "%.1f s", it / 1000f),
+                        fontSize = 16.sp
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Luk") }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Button(onClick = { confirmDelete = true }) { Text("Slet historik") }
+                    Button(onClick = onDismiss) { Text("Luk") }
+                }
             }
         }
     }
