@@ -3,6 +3,9 @@ package com.example.svommeapp
 import android.app.Application
 import android.content.Context
 import android.graphics.RectF
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -201,8 +204,29 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
             val newLaps = _laps.value + 1
             _laps.emit(newLaps)
             _distanceMeters.emit(newLaps * _laneLengthMeters.value / _turnsPerLap.value)
-            val times = (_lastLapTimes.value + timestamp).takeLast(3)
+            val times = (_lastLapTimes.value + timestamp).takeLast(4)
             _lastLapTimes.emit(times)
+            playActivationSound()
+        }
+    }
+
+    private fun playActivationSound() {
+        if (!_playSoundOnActivation.value) return
+        val uri = _activationSoundUri.value ?: return
+        try {
+            val player = MediaPlayer()
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            player.setDataSource(getApplication(), Uri.parse(uri))
+            player.setOnCompletionListener { it.release() }
+            player.prepare()
+            player.start()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
