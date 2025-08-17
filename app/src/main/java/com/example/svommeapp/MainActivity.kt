@@ -76,7 +76,6 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             val permissions = rememberMultiplePermissionsState(
                 listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
@@ -138,6 +137,17 @@ class MainActivity : ComponentActivity() {
         val previewMinimized by vm.previewMinimized.collectAsState()
         val activationSoundUri by vm.activationSoundUri.collectAsState()
         val playSoundOnActivation by vm.playSoundOnActivation.collectAsState()
+
+        DisposableEffect(counting) {
+            if (counting) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            onDispose {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
 
         val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
