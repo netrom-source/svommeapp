@@ -77,11 +77,6 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     private val _turnsPerLap = MutableStateFlow(prefs.getInt("turnsPerLap", 2))
     val turnsPerLap: StateFlow<Int> = _turnsPerLap
 
-    private val _themeMode = MutableStateFlow(
-        ThemeMode.valueOf(prefs.getString("themeMode", ThemeMode.AUTO.name)!!)
-    )
-    val themeMode: StateFlow<ThemeMode> = _themeMode
-
     // Debug and runtime state
     private val _counting = MutableStateFlow(true)
     val counting: StateFlow<Boolean> = _counting
@@ -103,6 +98,7 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     private val db = LapDatabase.get(app)
     private val dao = db.lapDao()
     private var sessionStartTime: Long = System.currentTimeMillis()
+    private var activationPlayer: MediaPlayer? = null
 
     init {
         viewModelScope.launch {
@@ -154,11 +150,6 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     fun updateTurnsPerLap(value: Int) {
         _turnsPerLap.value = value
         prefs.edit().putInt("turnsPerLap", value).apply()
-    }
-
-    fun updateThemeMode(mode: ThemeMode) {
-        _themeMode.value = mode
-        prefs.edit().putString("themeMode", mode.name).apply()
     }
 
     fun setCounting(active: Boolean) {
@@ -238,8 +229,10 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
     private fun playActivationSound() {
         if (!_playSoundOnActivation.value) return
         val uri = _activationSoundUri.value ?: return
+        val player = activationPlayer ?: MediaPlayer().also { activationPlayer = it }
+        if (player.isPlaying) return
         try {
-            val player = MediaPlayer()
+            player.reset()
             player.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
@@ -247,12 +240,21 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
                     .build()
             )
             player.setDataSource(getApplication(), Uri.parse(uri))
-            player.setOnCompletionListener { it.release() }
+            player.setOnCompletionListener {
+                it.reset()
+            }
             player.prepare()
             player.start()
         } catch (e: Exception) {
             e.printStackTrace()
+            player.reset()
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        activationPlayer?.release()
+        activationPlayer = null
     }
 
     fun reportMotion(level: Float) {
