@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,8 +82,7 @@ class MainActivity : ComponentActivity() {
                 listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
             )
             LaunchedEffect(Unit) { permissions.launchMultiplePermissionRequest() }
-            val theme by vm.themeMode.collectAsState()
-            SvommeTheme(theme) {
+            SvommeTheme {
                 if (!permissions.allPermissionsGranted) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("Kamera- og mikrofontilladelser er påkrævet")
@@ -130,7 +130,6 @@ class MainActivity : ComponentActivity() {
         val laneLength by vm.laneLengthMeters.collectAsState()
         val minInterval by vm.minIntervalMs.collectAsState()
         val turnsPerLap by vm.turnsPerLap.collectAsState()
-        val themeMode by vm.themeMode.collectAsState()
         val counting by vm.counting.collectAsState()
         val motionLevel by vm.motionLevel.collectAsState()
         val soundLevel by vm.soundLevelDb.collectAsState()
@@ -158,6 +157,7 @@ class MainActivity : ComponentActivity() {
                 vm.setActivationSoundUri(it.toString())
             }
         }
+        val contentScroll = rememberScrollState()
 
         LaunchedEffect(motionLevel) {
             if (motionLevel > sensitivity) {
@@ -220,36 +220,51 @@ class MainActivity : ComponentActivity() {
                 }
             })
         }, bottomBar = {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = { vm.toggleCounting() },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(80.dp)
+            Column {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (counting) Color(0xFF388E3C) else Color.Red)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (counting) "Stop" else "Start",
-                        fontSize = 20.sp,
+                        if (counting) "Tæller aktiv" else "Tæller ikke startet",
+                        color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Button(
-                    onClick = { showReset = true },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(80.dp),
-                    enabled = counting
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        "Nulstil",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Button(
+                        onClick = { vm.toggleCounting() },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(80.dp),
+                    ) {
+                        Text(
+                            if (counting) "Stop" else "Start",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Button(
+                        onClick = { showReset = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(80.dp),
+                        enabled = true
+                    ) {
+                        Text(
+                            "Nulstil",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }) { padding ->
@@ -262,7 +277,7 @@ class MainActivity : ComponentActivity() {
                     visible = !previewMinimized,
                     enter = slideInVertically(initialOffsetY = { -it }, animationSpec = tween(250)),
                     exit = slideOutVertically(targetOffsetY = { -it }, animationSpec = tween(250)),
-                    modifier = Modifier.fillMaxWidth().weight(1f)
+                    modifier = Modifier.fillMaxWidth().weight(1f).zIndex(1f)
                 ) {
                     Box(Modifier.fillMaxSize()) {
                         AndroidView({ previewView }, modifier = Modifier.fillMaxSize())
@@ -338,27 +353,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(if (counting) Color(0xFF388E3C) else Color.Red)
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (counting) "Tæller aktiv" else "Tæller ikke startet",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
                 Column(
                     (if (previewMinimized) Modifier.weight(1f) else Modifier)
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
+                        .let { if (previewMinimized) it else it.verticalScroll(contentScroll) }
                         .padding(16.dp)
                         .alpha(if (counting) 1f else 0.3f),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = if (previewMinimized) Arrangement.Center else Arrangement.Top
+                    verticalArrangement = Arrangement.Top
                 ) {
                     Text("$laps", fontSize = if (previewMinimized) 192.sp else 96.sp, fontWeight = FontWeight.Bold)
                     Text("Omgange", fontSize = if (previewMinimized) 40.sp else 20.sp)
@@ -396,8 +398,6 @@ class MainActivity : ComponentActivity() {
                 onMinIntervalChange = vm::updateMinInterval,
                 turnsPerLap = turnsPerLap,
                 onTurnsPerLapChange = vm::updateTurnsPerLap,
-                themeMode = themeMode,
-                onThemeModeChange = vm::updateThemeMode,
                 debugOverlay = debugOverlay,
                 onDebugOverlayChange = vm::setDebugOverlay,
                 playSoundOnActivation = playSoundOnActivation,
@@ -519,10 +519,12 @@ private fun RoiOverlay(roi: RectF, highlight: Boolean, onChange: (RectF) -> Unit
                             var newHeight = rect.height() * zoom
                             newWidth = newWidth.coerceIn(0.05f, 1f)
                             newHeight = newHeight.coerceIn(0.05f, 1f)
+                            val marginX = with(density) { 8.dp.toPx() } / parentSize.width
+                            val marginY = with(density) { 8.dp.toPx() } / parentSize.height
                             var left = rect.left + pan.x / parentSize.width
                             var top = rect.top + pan.y / parentSize.height
-                            left = left.coerceIn(0f, 1f - newWidth)
-                            top = top.coerceIn(0f, 1f - newHeight)
+                            left = left.coerceIn(marginX, 1f - marginX - newWidth)
+                            top = top.coerceIn(marginY, 1f - marginY - newHeight)
                             rect = RectF(left, top, left + newWidth, top + newHeight)
                             onChange(rect)
                         }
@@ -554,8 +556,6 @@ private fun SettingsDialog(
     onMinIntervalChange: (Long) -> Unit,
     turnsPerLap: Int,
     onTurnsPerLapChange: (Int) -> Unit,
-    themeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit,
     debugOverlay: Boolean,
     onDebugOverlayChange: (Boolean) -> Unit,
     playSoundOnActivation: Boolean,
@@ -641,19 +641,6 @@ private fun SettingsDialog(
                     Text(if (soundUri == null) "Vælg MP3" else "Skift MP3")
                 }
                 soundUri?.let { Text(it, fontSize = 12.sp) }
-                Spacer(Modifier.height(8.dp))
-                Text("Tema")
-                ThemeMode.values().forEach { mode ->
-                    val label = when (mode) {
-                        ThemeMode.AUTO -> "Auto"
-                        ThemeMode.LIGHT -> "Lys"
-                        ThemeMode.DARK -> "Mørk"
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = themeMode == mode, onClick = { onThemeModeChange(mode) })
-                        Text(label)
-                    }
-                }
                 Spacer(Modifier.height(16.dp))
                 Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                     Text("Luk")
