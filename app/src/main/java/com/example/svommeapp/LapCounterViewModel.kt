@@ -302,4 +302,16 @@ class LapCounterViewModel(app: Application) : AndroidViewModel(app) {
             lastTriggerTime = 0
         }
     }
+
+    fun deleteSession(id: Long) {
+        viewModelScope.launch {
+            dao.deleteSessionWithLaps(id)
+        }
+    }
+
+    fun deleteAllHistory() {
+        viewModelScope.launch {
+            dao.deleteAllSessionsWithLaps()
+        }
+    }
 }
