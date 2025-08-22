@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
@@ -412,7 +413,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (showHistory) {
-            HistoryDialog(historyFlow = vm.history, onDismiss = { showHistory = false })
+            HistoryDialog(vm = vm, onDismiss = { showHistory = false })
         }
 
         if (showReset) {
@@ -508,14 +509,18 @@ private fun LastIntervalsPanel(lapTimes: List<Long>, onClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text("Seneste 3 intervaller", fontWeight = FontWeight.Bold)
+            Text(
+                "Seneste 3 intervaller",
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp
+            )
             repeat(3) { idx ->
                 val value = last.getOrNull(idx)
                 Text(
                     text = value?.let {
                         String.format(Locale.getDefault(), "%.1f s", it / 1000f)
                     } ?: "-",
-                    fontSize = 20.sp
+                    fontSize = 32.sp
                 )
             }
         }
@@ -735,28 +740,64 @@ private fun SessionIntervalsDialog(
 }
 
 @Composable
-private fun HistoryDialog(historyFlow: kotlinx.coroutines.flow.Flow<List<com.example.svommeapp.data.SessionWithLaps>>, onDismiss: () -> Unit) {
+private fun HistoryDialog(vm: LapCounterViewModel, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colors.background) {
-            val sessions by historyFlow.collectAsState(initial = emptyList())
-            val context = LocalContext.current
+            val sessions by vm.history.collectAsState(initial = emptyList())
+            val laneLength by vm.laneLengthMeters.collectAsState()
+            val turnsPerLap by vm.turnsPerLap.collectAsState()
             val formatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss") }
-            Column(Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+            var sessionToDelete by remember { mutableStateOf<Long?>(null) }
+            var confirmDeleteAll by remember { mutableStateOf(false) }
+            val totalLaps = sessions.sumOf { it.laps.size }
+            val totalDistance = if (turnsPerLap == 0) 0 else totalLaps * laneLength / turnsPerLap
+            val totalTime = sessions.sumOf { swl ->
+                val end = swl.session.endedAt ?: swl.laps.lastOrNull()?.timestamp ?: swl.session.startedAt
+                end - swl.session.startedAt
+            }
+            Column(
+                Modifier.padding(16.dp).width(300.dp).heightIn(max = 400.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text("Historik", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("Samlede omgange: $totalLaps")
+                Text("Samlet distance: ${totalDistance} m")
+                Text("Samlet tid: " + String.format(Locale.getDefault(), "%.1f s", totalTime / 1000f))
+                Spacer(Modifier.height(8.dp))
                 sessions.forEach { swl ->
                     val count = swl.laps.size
                     val total = if (count > 0) swl.laps.last().timestamp - swl.laps.first().timestamp else 0L
                     val start = Instant.ofEpochMilli(swl.session.startedAt).atZone(ZoneId.systemDefault()).format(formatter)
-                    val end = swl.session.endedAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(formatter) } ?: "-"
-                    Text("$start - $end : $count omgange, ${total/1000}s")
+                    val end = swl.session.endedAt?.let {
+                        Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).format(formatter)
+                    } ?: "-"
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "$start - $end : $count omgange, ${total/1000}s",
+                            Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { sessionToDelete = swl.session.id }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Slet")
+                        }
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = {
+                    val csvFormatter = DateTimeFormatter
+                        .ofPattern("yyyy-MM-dd HH:mm:ssXXX")
+                        .withZone(ZoneId.of("Europe/Copenhagen"))
                     val text = buildString {
-                        append("session_id,started_at,ended_at,lap_timestamp,duration_ms,source\n")
+                        append("session_id,started_at,started_at_unix_ms,ended_at,ended_at_unix_ms,lap_timestamp,lap_timestamp_unix_ms,duration_ms,source\n")
                         sessions.forEach { s ->
+                            val started = csvFormatter.format(Instant.ofEpochMilli(s.session.startedAt))
+                            val ended = s.session.endedAt?.let { csvFormatter.format(Instant.ofEpochMilli(it)) } ?: ""
                             s.laps.forEach { l ->
-                                append("${s.session.id},${s.session.startedAt},${s.session.endedAt},${l.timestamp},${l.durationMs},${l.source}\n")
+                                val lapTs = csvFormatter.format(Instant.ofEpochMilli(l.timestamp))
+                                append("${s.session.id},$started,${s.session.startedAt},$ended,${s.session.endedAt ?: ""},$lapTs,${l.timestamp},${l.durationMs},${l.source}\n")
                             }
                         }
                     }
@@ -765,7 +806,43 @@ private fun HistoryDialog(historyFlow: kotlinx.coroutines.flow.Flow<List<com.exa
                     val file = java.io.File(dir, "svomme_history.csv")
                     file.writeText(text)
                 }) { Text("Eksportér CSV") }
+                Spacer(Modifier.height(4.dp))
+                Button(onClick = { confirmDeleteAll = true }) { Text("Slet alt") }
                 Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("Luk") }
+            }
+
+            if (sessionToDelete != null) {
+                AlertDialog(
+                    onDismissRequest = { sessionToDelete = null },
+                    title = { Text("Slet session?") },
+                    text = { Text("Er du sikker på, at du vil slette denne session?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            vm.deleteSession(sessionToDelete!!)
+                            sessionToDelete = null
+                        }) { Text("Slet") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { sessionToDelete = null }) { Text("Annuller") }
+                    }
+                )
+            }
+
+            if (confirmDeleteAll) {
+                AlertDialog(
+                    onDismissRequest = { confirmDeleteAll = false },
+                    title = { Text("Slet al historik?") },
+                    text = { Text("Dette kan ikke fortrydes.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            vm.deleteAllHistory()
+                            confirmDeleteAll = false
+                        }) { Text("Slet alt") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { confirmDeleteAll = false }) { Text("Annuller") }
+                    }
+                )
             }
         }
     }
